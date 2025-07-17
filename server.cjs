@@ -15,30 +15,56 @@ connectDB();
 
 const app = express();
 
-// Middlewares
+// Configuration CORS avec le nouveau lien backend
 const allowedOrigins = [
-  'https://1132ddc5.emaprojet.pages.dev',
-  'https://222294b2.emaprojet.pages.dev',
-  'http://localhost:5173',
+  'https://ema-v3-front.onrender.com', // ✅ Votre frontend
+  'https://ema-v3-backend.onrender.com', // ✅ Votre nouveau backend
+  'http://localhost:5173',   // Vite dev
+  'http://localhost:3000',   // React dev
   /.+\.emaprojet\.pages\.dev$/ // Autoriser tous les sous-domaines de emaprojet.pages.dev
 ];
 
-// Configuration CORS temporairement permissive
 const corsOptions = {
-  origin: '*', // Autoriser toutes les origines
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  origin: function (origin, callback) {
+    // Autoriser les requêtes sans origin (mobile apps, Postman, etc.)
+    if (!origin) return callback(null, true);
+    
+    // Vérifier si l'origin est autorisée
+    const isAllowed = allowedOrigins.some(allowedOrigin => {
+      if (typeof allowedOrigin === 'string') {
+        return allowedOrigin === origin;
+      } else if (allowedOrigin instanceof RegExp) {
+        return allowedOrigin.test(origin);
+      }
+      return false;
+    });
+    
+    if (isAllowed) {
+      console.log('✅ Origin autorisée:', origin);
+      callback(null, true);
+    } else {
+      console.log('❌ Origin non autorisée:', origin);
+      callback(new Error('Non autorisé par CORS'));
+    }
+  },
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: [
+    'Content-Type', 
+    'Authorization', 
+    'X-Requested-With',
+    'Accept',
+    'Origin'
+  ],
   credentials: true
 };
 
+// Appliquer CORS
 app.use(cors(corsOptions));
-app.options('*', cors(corsOptions)); // Activer les requêtes OPTIONS
-app.use(express.json());
+app.options('*', cors(corsOptions)); // Activer les requêtes OPTIONS (preflight)
 
+// Middlewares
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use('/uploads', express.static('uploads')); // Pour accéder aux images
-
 
 // 📂 Création du dossier uploads/ s'il n'existe pas
 const uploadsPath = path.join(__dirname, 'uploads');
@@ -58,8 +84,23 @@ app.use('/api/auth', authRoutes);
 app.use('/api/reservations', reservationRoutes);
 app.use('/api/annonces', annoncesRoutes);
 
+// Middleware de gestion d'erreurs CORS
+app.use((err, req, res, next) => {
+  if (err.message === 'Non autorisé par CORS') {
+    res.status(403).json({ 
+      error: 'CORS Error', 
+      message: 'Origin non autorisée',
+      origin: req.headers.origin 
+    });
+  } else {
+    next(err);
+  }
+});
+
 // Lancement du serveur
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () =>
-  console.log(`🚀 Serveur en ligne : http://localhost:${PORT}`)
-);
+app.listen(PORT, () => {
+  console.log(`🚀 Serveur en ligne : http://localhost:${PORT}`);
+  console.log(`🌐 Backend URL: https://ema-v3-backend.onrender.com`);
+  console.log('✅ Origins autorisées:', allowedOrigins);
+});
