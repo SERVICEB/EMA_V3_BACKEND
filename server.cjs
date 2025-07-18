@@ -5,7 +5,8 @@ const path = require('path');
 const fs = require('fs');
 
 const connectDB = require('./config/db.js');
-const residenceRoutes = require('./routes/residenceRoutes.cjs');
+// ✅ Vérifiez que ces fichiers existent avec les bonnes extensions
+const residenceRoutes = require('./routes/residenceRoutes.cjs'); // ou .cjs selon votre fichier
 const authRoutes = require('./routes/authRoutes.cjs');
 const reservationRoutes = require('./routes/reservationRoutes.cjs');
 const annoncesRoutes = require('./routes/annoncesRoutes.cjs');
@@ -17,11 +18,11 @@ const app = express();
 
 // Configuration CORS avec le nouveau lien backend
 const allowedOrigins = [
-  'https://ema-v3-front.onrender.com', // ✅ Votre frontend
-  'https://ema-v3-backend.onrender.com', // ✅ Votre nouveau backend
+  'https://ema-v3-front.onrender.com', // ✅  frontend
+  'https://ema-v3-backend.onrender.com', 
   'http://localhost:5173',   // Vite dev
   'http://localhost:3000',   // React dev
-  /.+\.emaprojet\.pages\.dev$/ // Autoriser tous les sous-domaines de emaprojet.pages.dev
+  /.+\.ema-v3-front\.onrender\.com$/ // 
 ];
 
 const corsOptions = {
@@ -63,8 +64,8 @@ app.use(cors(corsOptions));
 app.options('*', cors(corsOptions)); // Activer les requêtes OPTIONS (preflight)
 
 // Middlewares
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb' })); // Augmenter la limite pour les uploads
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // 📂 Création du dossier uploads/ s'il n'existe pas
 const uploadsPath = path.join(__dirname, 'uploads');
@@ -75,8 +76,36 @@ if (!fs.existsSync(uploadsPath)) {
 // 📸 Pour servir les images uploadées
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
+// ✅ Middleware de logging pour debug
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+  if (req.method === 'POST' || req.method === 'PUT') {
+    console.log('Body keys:', Object.keys(req.body));
+    console.log('Files:', req.files ? req.files.length : 0);
+  }
+  next();
+});
+
 // Route de test
-app.get('/', (_req, res) => res.send('✅ API EMA Résidences & Annonces est opérationnelle'));
+app.get('/', (_req, res) => res.json({ 
+  message: '✅ API EMA Résidences & Annonces est opérationnelle',
+  timestamp: new Date().toISOString(),
+  endpoints: [
+    'GET /api/residences',
+    'POST /api/residences',
+    'GET /api/residences/:id',
+    'PUT /api/residences/:id',
+    'DELETE /api/residences/:id'
+  ]
+}));
+
+// ✅ Route de test pour les résidences
+app.get('/api/test', (_req, res) => {
+  res.json({ 
+    message: 'API test route works!',
+    timestamp: new Date().toISOString()
+  });
+});
 
 // Routes API
 app.use('/api/residences', residenceRoutes);
@@ -84,16 +113,38 @@ app.use('/api/auth', authRoutes);
 app.use('/api/reservations', reservationRoutes);
 app.use('/api/annonces', annoncesRoutes);
 
+// ✅ Middleware pour les routes non trouvées
+app.use('*', (req, res) => {
+  console.log('❌ Route non trouvée:', req.method, req.originalUrl);
+  res.status(404).json({
+    error: 'Route non trouvée',
+    method: req.method,
+    path: req.originalUrl,
+    availableRoutes: [
+      'GET /',
+      'GET /api/test',
+      'GET /api/residences',
+      'POST /api/residences',
+      'GET /api/residences/:id'
+    ]
+  });
+});
+
 // Middleware de gestion d'erreurs CORS
 app.use((err, req, res, next) => {
+  console.error('Erreur serveur:', err);
+  
   if (err.message === 'Non autorisé par CORS') {
     res.status(403).json({ 
-      error: 'CORS Error', 
+      error: 'CORS Error',
       message: 'Origin non autorisée',
       origin: req.headers.origin 
     });
   } else {
-    next(err);
+    res.status(500).json({
+      error: 'Erreur serveur interne',
+      message: err.message
+    });
   }
 });
 
@@ -103,4 +154,10 @@ app.listen(PORT, () => {
   console.log(`🚀 Serveur en ligne : http://localhost:${PORT}`);
   console.log(`🌐 Backend URL: https://ema-v3-backend.onrender.com`);
   console.log('✅ Origins autorisées:', allowedOrigins);
+  console.log('📍 Routes disponibles:');
+  console.log('  - GET /api/residences');
+  console.log('  - POST /api/residences');
+  console.log('  - GET /api/residences/:id');
+  console.log('  - PUT /api/residences/:id');
+  console.log('  - DELETE /api/residences/:id');
 });
