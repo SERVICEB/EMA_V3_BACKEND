@@ -1,77 +1,91 @@
 const mongoose = require('mongoose');
 
-/**
- * 📁 Sous-schéma pour les fichiers médias (image ou vidéo)
- */
-const mediaSchema = new mongoose.Schema({
-  url: {
+const residenceSchema = new mongoose.Schema({
+  title: {
     type: String,
-    required: true,
+    required: [true, 'Le titre est requis'],
+    trim: true,
+    maxlength: [100, 'Le titre ne peut pas dépasser 100 caractères']
+  },
+  description: {
+    type: String,
+    trim: true,
+    maxlength: [1000, 'La description ne peut pas dépasser 1000 caractères']
   },
   type: {
     type: String,
-    enum: ['image', 'video'],
-    required: true
-  }
-});
-
-/**
- * 🏠 Schéma principal pour les résidences
- */
-const residenceSchema = new mongoose.Schema(
-  {
-    title: {
+    required: [true, 'Le type est requis'],
+    enum: {
+      values: ['Hôtel', 'Appartement', 'Villa', 'Studio', 'Suite', 'Chambre'],
+      message: 'Type de résidence invalide'
+    }
+  },
+  price: {
+    type: Number,
+    required: [true, 'Le prix est requis'],
+    min: [1000, 'Le prix minimum est de 1000 FCFA'],
+    max: [1000000, 'Le prix maximum est de 1000000 FCFA']
+  },
+  location: {
+    type: String,
+    required: [true, 'La localisation est requise'],
+    trim: true
+  },
+  address: {
+    type: String,
+    trim: true
+  },
+  reference: {
+    type: String,
+    trim: true,
+    // ✅ Définir l'unicité ici, pas avec index: true
+    unique: true,
+    sparse: true // Permet des valeurs null/undefined multiples
+  },
+  media: [{
+    url: {
       type: String,
-      required: true,
-      trim: true,
-      maxlength: 100
+      required: true
     },
     type: {
       type: String,
-      required: true,
-      enum: ['Hôtel', 'Appartement', 'Villa', 'Studio', 'Suite', 'Chambre']
-    },
-    price: {
-      type: Number,
-      required: true,
-      min: 1000,
-      max: 1000000
-    },
-    location: {
-      type: String,
-      required: true,
-      trim: true
-    },
-    address: {
-      type: String,
-      trim: true
-    },
-    description: {
-      type: String,
-      maxlength: 1000
-    },
-    reference: {
-      type: String,
-      trim: true,
-      unique: true,
-      sparse: true, // permet plusieurs documents sans ce champ (undefined)
-      default: undefined // empêche explicitement null
-    },
-    amenities: [{
-      type: String
-    }],
-    media: [mediaSchema],
-    owner: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
-      required: true
+      enum: ['image', 'video'],
+      default: 'image'
     }
+  }],
+  amenities: [{
+    type: String,
+    trim: true
+  }],
+  owner: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: [true, 'Le propriétaire est requis']
   },
-  {
-    timestamps: true
+  status: {
+    type: String,
+    enum: ['disponible', 'occupé', 'maintenance'],
+    default: 'disponible'
+  },
+  rating: {
+    type: Number,
+    min: 0,
+    max: 5,
+    default: 0
+  },
+  reviewsCount: {
+    type: Number,
+    default: 0
   }
-);
+}, {
+  timestamps: true
+});
 
-// ✅ Création et export du modèle
-const Residence = mongoose.model('Residence', residenceSchema);
-module.exports = Residence;
+// ✅ Index composé pour la recherche
+residenceSchema.index({ location: 1, type: 1, price: 1 });
+residenceSchema.index({ owner: 1, createdAt: -1 });
+
+// ✅ NE PAS redéfinir l'index sur reference car unique: true le fait déjà
+// residenceSchema.index({ reference: 1 }, { unique: true, sparse: true }); // ❌ À supprimer
+
+module.exports = mongoose.model('Residence', residenceSchema);
