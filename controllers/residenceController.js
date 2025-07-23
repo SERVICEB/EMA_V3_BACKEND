@@ -1,164 +1,165 @@
-import Residence from '../models/Residence.js';
+const Residence = require('../models/Residence.cjs');
+const fs = require('fs');
+const path = require('path');
 
 /**
- * 🔧 Utilitaire pour deviner le type média à partir du mimetype ou de l'URL
+ * 🔄 Récupérer toutes les résidences
  */
-const getFileType = (value) => {
-  if (!value) return 'image';
-  if (typeof value === 'string') {
-    const ext = value.split('.').pop().toLowerCase();
-    return ['mp4', 'mov', 'webm'].includes(ext) ? 'video' : 'image';
-  }
-  if (value.mimetype) {
-    return value.mimetype.startsWith('video/') ? 'video' : 'image';
-  }
-  return 'image';
-};
-
-// 🔍 GET all
-export const getResidences = async (req, res) => {
+const getAllResidences = async (req, res) => {
   try {
-    const residences = await Residence.find().sort({ createdAt: -1 });
-    res.status(200).json(residences);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
+    const residences = await Residence.find().populate('owner', 'fullName email');
+    res.json(residences);
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur lors du chargement des résidences' });
   }
 };
 
-// 🔍 GET by ID
-export const getResidenceById = async (req, res) => {
+/**
+ * 🔍 Obtenir une résidence par son ID
+ */
+const getResidenceById = async (req, res) => {
   try {
-    const residence = await Residence.findById(req.params.id);
-    if (!residence) return res.status(404).json({ message: 'Résidence introuvable' });
-    res.status(200).json(residence);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
+    const residence = await Residence.findById(req.params.id).populate('owner', 'fullName email');
+    if (!residence) {
+      return res.status(404).json({ message: 'Résidence non trouvée' });
+    }
+    res.json(residence);
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur lors de la récupération de la résidence' });
   }
 };
 
-// ➕ CREATE
-export const createResidence = async (req, res) => {
+/**
+ * 🏡 Obtenir les résidences par propriétaire
+ */
+const getResidencesByOwner = async (req, res) => {
+  try {
+    const residences = await Residence.find({ owner: req.params.ownerId });
+    res.json(residences);
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur lors du chargement des résidences du propriétaire' });
+  }
+};
+
+/**
+ * ➕ Créer une nouvelle résidence
+ */
+const createResidence = async (req, res) => {
   try {
     const {
       title,
-      type,
+      description,
+      address,
       price,
       location,
-      address,
-      description,
-      reference,
-      amenities,
+      availability,
+      type
     } = req.body;
 
-    if (!title || !price || !location) {
-      return res.status(400).json({ message: 'Champs requis (titre, prix, localisation).' });
-    }
+    const owner = req.user.id;
 
-    if (!req.files || req.files.length === 0) {
-      return res.status(400).json({ message: 'Veuillez ajouter au moins une image ou vidéo.' });
-    }
+    const images = req.files ? req.files.map(file => file.path) : [];
 
-    const media = req.files.map((file) => ({
-      url: `/uploads/${file.filename}`,
-      type: getFileType(file),
-    }));
-
-    const residence = new Residence({
+    const newResidence = new Residence({
       title,
-      type,
+      description,
+      address,
       price,
       location,
-      address,
-      description,
-      reference: reference || `RES-${Date.now()}`,
-      amenities: amenities ? JSON.parse(amenities) : [],
-      media,
-      owner: req.user.id,
+      availability,
+      type,
+      owner,
+      images
     });
 
-    await residence.save();
-    res.status(201).json(residence);
-  } catch (err) {
-    console.error('Erreur création résidence:', err);
-    res.status(500).json({ message: 'Erreur serveur lors de la création.' });
+    const savedResidence = await newResidence.save();
+    res.status(201).json(savedResidence);
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur lors de la création de la résidence' });
   }
 };
 
-// ✏️ UPDATE
-export const updateResidence = async (req, res) => {
+/**
+ * ✏️ Modifier une résidence
+ */
+const updateResidence = async (req, res) => {
   try {
     const residence = await Residence.findById(req.params.id);
-    if (!residence) return res.status(404).json({ message: 'Résidence introuvable' });
+    if (!residence) {
+      return res.status(404).json({ message: 'Résidence non trouvée' });
+    }
 
-    if (residence.owner.toString() !== req.user.id.toString()) {
+    // Vérifier que l'utilisateur est le propriétaire
+    if (residence.owner.toString() !== req.user.id) {
       return res.status(403).json({ message: 'Non autorisé' });
     }
 
     const {
       title,
-      type,
+      description,
+      address,
       price,
       location,
-      address,
-      description,
-      reference,
-      amenities,
-      existingImages,
+      availability,
+      type
     } = req.body;
 
-    if (title !== undefined) residence.title = title;
-    if (type !== undefined) residence.type = type;
-    if (price !== undefined) residence.price = price;
-    if (location !== undefined) residence.location = location;
-    if (address !== undefined) residence.address = address;
-    if (description !== undefined) residence.description = description;
-    if (reference !== undefined) residence.reference = reference;
-    if (amenities !== undefined) {
-      residence.amenities = JSON.parse(amenities);
-    }
+    const updatedData = {
+      title,
+      description,
+      address,
+      price,
+      location,
+      availability,
+      type
+    };
 
-    let existingMedia = [];
-    if (existingImages) {
-      const parsed = JSON.parse(existingImages);
-      existingMedia = Array.isArray(parsed)
-        ? parsed.map((url) => ({
-            url,
-            type: getFileType(url),
-          }))
-        : [];
-    }
-
+    // Ajouter les nouvelles images si elles existent
     if (req.files && req.files.length > 0) {
-      const newMedia = req.files.map((file) => ({
-        url: `/uploads/${file.filename}`,
-        type: getFileType(file),
-      }));
-      residence.media = [...existingMedia, ...newMedia];
-    } else {
-      residence.media = existingMedia;
+      updatedData.images = req.files.map(file => file.path);
     }
 
-    await residence.save();
-    res.status(200).json(residence);
-  } catch (err) {
-    console.error('Erreur update résidence:', err);
-    res.status(500).json({ message: err.message });
+    const updatedResidence = await Residence.findByIdAndUpdate(req.params.id, updatedData, { new: true });
+    res.json(updatedResidence);
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur lors de la mise à jour' });
   }
 };
 
-// ❌ DELETE
-export const deleteResidence = async (req, res) => {
+/**
+ * ❌ Supprimer une résidence
+ */
+const deleteResidence = async (req, res) => {
   try {
     const residence = await Residence.findById(req.params.id);
-    if (!residence) return res.status(404).json({ message: 'Résidence introuvable' });
+    if (!residence) {
+      return res.status(404).json({ message: 'Résidence non trouvée' });
+    }
 
-    if (residence.owner.toString() !== req.user.id.toString()) {
+    if (residence.owner.toString() !== req.user.id) {
       return res.status(403).json({ message: 'Non autorisé' });
+    }
+
+    // Supprimer les fichiers images associés
+    if (residence.images && residence.images.length > 0) {
+      residence.images.forEach(imagePath => {
+        const fullPath = path.join(__dirname, '..', imagePath);
+        if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
+      });
     }
 
     await residence.deleteOne();
-    res.status(200).json({ message: 'Résidence supprimée avec succès' });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.json({ message: 'Résidence supprimée' });
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur lors de la suppression' });
   }
+};
+
+module.exports = {
+  getAllResidences,
+  getResidenceById,
+  getResidencesByOwner,
+  createResidence,
+  updateResidence,
+  deleteResidence
 };
