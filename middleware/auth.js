@@ -40,15 +40,16 @@ const auth = async (req, res, next) => {
       return res.status(401).json({ message: 'Token invalide : utilisateur non trouvé.' });
     }
 
-    // Injecte les infos utilisateur dans req.user
+    // ✅ CORRECTION : Forcer la conversion en string pour éviter les problèmes de comparaison
     req.user = {
-      id: user._id,
+      id: user._id.toString(), // ← Conversion explicite en string
       role: user.role || 'utilisateur',
       email: user.email,
       nom: user.nom,
       telephone: user.telephone,
     };
     console.log('User attached to request:', req.user);
+    console.log('User ID type:', typeof req.user.id); // Devrait afficher "string"
 
     console.log('--- Auth Middleware Success ---');
     next();
