@@ -9,38 +9,40 @@ const router = express.Router();
 // ✅ Créer une réservation (via contrôleur)
 router.post('/', auth, createReservation);
 
-// ✅ Récupérer les réservations d’un propriétaire
+// ✅ Récupérer les réservations d'un propriétaire
 router.get('/owner', auth, async (req, res) => {
   try {
     const ownerId = req.user.id;
     const residences = await Residence.find({ owner: ownerId });
     const residenceIds = residences.map(r => r._id);
 
-    const reservations = await Reservation.find({ residence: { $in: residenceIds } })
-      .populate('user', 'name email phone')
-      .populate('residence', 'title location prixParNuit price')
+    // ✅ Utiliser residenceId au lieu de residence
+    const reservations = await Reservation.find({ residenceId: { $in: residenceIds } })
+      .populate('userId', 'name email phone') // ✅ userId au lieu de user
+      .populate('residenceId', 'title location prixParNuit price') // ✅ residenceId
       .sort({ createdAt: -1 });
 
     res.json(reservations);
   } catch (error) {
     console.error('Erreur réservations propriétaire :', error);
-    res.status(500).json({ message: 'Erreur serveur' });
+    res.status(500).json({ message: 'Erreur serveur', error: error.message });
   }
 });
 
-// ✅ Récupérer les réservations d’un client
+// ✅ Récupérer les réservations d'un client
 router.get('/client', auth, async (req, res) => {
   try {
     const userId = req.user.id;
 
-    const reservations = await Reservation.find({ user: userId })
-      .populate('residence', 'title location prixParNuit price media')
+    // ✅ Utiliser userId au lieu de user
+    const reservations = await Reservation.find({ userId: userId })
+      .populate('residenceId', 'title location prixParNuit price media') // ✅ residenceId
       .sort({ createdAt: -1 });
 
     res.json(reservations);
   } catch (error) {
     console.error('Erreur réservations client :', error);
-    res.status(500).json({ message: 'Erreur serveur' });
+    res.status(500).json({ message: 'Erreur serveur', error: error.message });
   }
 });
 
@@ -56,23 +58,26 @@ router.patch('/:id/status', auth, async (req, res) => {
       return res.status(400).json({ message: 'Statut invalide' });
     }
 
-    const reservation = await Reservation.findById(id).populate('residence');
+    // ✅ Populer avec les nouveaux noms de champs
+    const reservation = await Reservation.findById(id).populate('residenceId');
     if (!reservation) return res.status(404).json({ message: 'Réservation non trouvée' });
 
-    if (reservation.residence.owner.toString() !== ownerId) {
+    // ✅ Accès via residenceId au lieu de residence
+    if (reservation.residenceId.owner.toString() !== ownerId) {
       return res.status(403).json({ message: 'Non autorisé' });
     }
 
     reservation.status = status;
     await reservation.save();
 
-    await reservation.populate('user', 'name email');
-    await reservation.populate('residence', 'title location');
+    // ✅ Re-populer avec les nouveaux noms
+    await reservation.populate('userId', 'name email');
+    await reservation.populate('residenceId', 'title location');
 
     res.json(reservation);
   } catch (error) {
     console.error('Erreur mise à jour statut :', error);
-    res.status(500).json({ message: 'Erreur serveur' });
+    res.status(500).json({ message: 'Erreur serveur', error: error.message });
   }
 });
 
@@ -82,14 +87,16 @@ router.get('/:id', auth, async (req, res) => {
     const { id } = req.params;
     const userId = req.user.id;
 
+    // ✅ Populer avec les nouveaux noms de champs
     const reservation = await Reservation.findById(id)
-      .populate('user', 'name email phone')
-      .populate('residence', 'title location prixParNuit price media owner');
+      .populate('userId', 'name email phone')
+      .populate('residenceId', 'title location prixParNuit price media owner');
 
     if (!reservation) return res.status(404).json({ message: 'Réservation non trouvée' });
 
-    const isOwner = reservation.residence.owner.toString() === userId;
-    const isClient = reservation.user._id.toString() === userId;
+    // ✅ Vérification avec les nouveaux noms
+    const isOwner = reservation.residenceId.owner.toString() === userId;
+    const isClient = reservation.userId._id.toString() === userId;
 
     if (!isOwner && !isClient) {
       return res.status(403).json({ message: 'Non autorisé' });
@@ -98,7 +105,7 @@ router.get('/:id', auth, async (req, res) => {
     res.json(reservation);
   } catch (error) {
     console.error('Erreur récupération réservation :', error);
-    res.status(500).json({ message: 'Erreur serveur' });
+    res.status(500).json({ message: 'Erreur serveur', error: error.message });
   }
 });
 
@@ -108,11 +115,13 @@ router.delete('/:id', auth, async (req, res) => {
     const { id } = req.params;
     const userId = req.user.id;
 
-    const reservation = await Reservation.findById(id).populate('residence');
+    // ✅ Populer avec residenceId
+    const reservation = await Reservation.findById(id).populate('residenceId');
     if (!reservation) return res.status(404).json({ message: 'Réservation non trouvée' });
 
-    const isOwner = reservation.residence.owner.toString() === userId;
-    const isClient = reservation.user.toString() === userId;
+    // ✅ Vérification avec les nouveaux noms
+    const isOwner = reservation.residenceId.owner.toString() === userId;
+    const isClient = reservation.userId.toString() === userId; // ✅ userId
 
     if (!isOwner && !isClient) {
       return res.status(403).json({ message: 'Non autorisé' });
@@ -122,7 +131,7 @@ router.delete('/:id', auth, async (req, res) => {
     res.json({ message: 'Réservation supprimée' });
   } catch (error) {
     console.error('Erreur suppression réservation :', error);
-    res.status(500).json({ message: 'Erreur serveur' });
+    res.status(500).json({ message: 'Erreur serveur', error: error.message });
   }
 });
 
@@ -133,13 +142,14 @@ router.get('/stats/owner', auth, async (req, res) => {
     const residences = await Residence.find({ owner: ownerId });
     const residenceIds = residences.map(r => r._id);
 
+    // ✅ Utiliser residenceId dans toutes les requêtes
     const [total, confirmed, pending, cancelled, revenue] = await Promise.all([
-      Reservation.countDocuments({ residence: { $in: residenceIds } }),
-      Reservation.countDocuments({ residence: { $in: residenceIds }, status: 'confirmée' }),
-      Reservation.countDocuments({ residence: { $in: residenceIds }, status: 'en attente' }),
-      Reservation.countDocuments({ residence: { $in: residenceIds }, status: 'annulée' }),
+      Reservation.countDocuments({ residenceId: { $in: residenceIds } }),
+      Reservation.countDocuments({ residenceId: { $in: residenceIds }, status: 'confirmée' }),
+      Reservation.countDocuments({ residenceId: { $in: residenceIds }, status: 'en attente' }),
+      Reservation.countDocuments({ residenceId: { $in: residenceIds }, status: 'annulée' }),
       Reservation.aggregate([
-        { $match: { residence: { $in: residenceIds }, status: 'confirmée' } },
+        { $match: { residenceId: { $in: residenceIds }, status: 'confirmée' } },
         { $group: { _id: null, total: { $sum: '$totalPrice' } } }
       ])
     ]);
@@ -153,7 +163,7 @@ router.get('/stats/owner', auth, async (req, res) => {
     });
   } catch (error) {
     console.error('Erreur stats réservations :', error);
-    res.status(500).json({ message: 'Erreur serveur' });
+    res.status(500).json({ message: 'Erreur serveur', error: error.message });
   }
 });
 

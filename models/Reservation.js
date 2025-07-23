@@ -1,4 +1,4 @@
-import mongoose from 'mongoose';
+const mongoose = require('mongoose');
 
 const reservationSchema = new mongoose.Schema({
   // ✅ Utiliser userId au lieu de user
@@ -76,7 +76,7 @@ reservationSchema.virtual('residence', {
   justOne: true
 });
 
-// 🧠 Indexation (mise à jour avec les nouveaux noms de champs)
+// 🧠 Indexation
 reservationSchema.index({ userId: 1, createdAt: -1 });
 reservationSchema.index({ residenceId: 1, startDate: 1, endDate: 1 });
 reservationSchema.index({ status: 1 });
@@ -126,5 +126,5 @@ reservationSchema.pre('findOneAndUpdate', function (next) {
   next();
 });
 
-const Reservation = mongoose.model('Reservation', reservationSchema);
-export default Reservation;
+// ✅ Export CommonJS
+module.exports = mongoose.model('Reservation', reservationSchema);
